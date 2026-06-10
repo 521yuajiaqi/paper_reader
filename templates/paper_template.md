@@ -4,7 +4,7 @@ direction: "{{direction}}"
 # 论文标题
 title: "{{title}}"
 # 图谱显示名（📖 表示翻译笔记，🧠 表示深度解读）
-aliases: ["{{venue_short}}{{year}} · {{short_name}} · 翻译"]
+aliases: ["{{venue_short}}{{year}} · {{short_name}} · 翻译+轻分析"]
 # 发表的会议/期刊名
 venue: "{{venue}}"
 # 发表年份

@@ -70,11 +70,11 @@ cp templates/paper_deep_read_template.md "<你的vault>/Templates/"
 │       ├── SomePaper.pdf
 │       └── AnotherPaper.pdf
 ├── Papers/                        ← 翻译笔记（你自己读的）
-│   ├── CVPR2020Face X-ray...md
-│   └── ECCV2020F3-Net...md
+│   ├── CVPR20 · Face X-ray · 翻译+轻分析.md
+│   └── ECCV20 · F3-Net · 翻译+轻分析.md
 ├── Reading_List/                  ← 深度解读（读完对答案）
-│   ├── CVPR2020Face X-ray...深度解读.md
-│   └── ECCV2020F3-Net...深度解读.md
+│   ├── CVPR20 · Face X-ray · 深度解读.md
+│   └── ECCV20 · F3-Net · 深度解读.md
 ├── extract_paper.py               # PDF 提取脚本
 └── .obsidian/                     # Obsidian 自动生成
     └── graph.json                 # 图谱配置

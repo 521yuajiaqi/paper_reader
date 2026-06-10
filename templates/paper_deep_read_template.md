@@ -1,6 +1,6 @@
 ---
 title: "{{title}} 深度解读"
-aliases: ["{{venue_short}}{{year}} · {{short_name}} · 解读"]
+aliases: ["{{venue_short}}{{year}} · {{short_name}} · 深度解读"]
 venue: "{{venue}}"
 year: {{year}}
 tags: 
