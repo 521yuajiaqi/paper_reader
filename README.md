@@ -1,10 +1,8 @@
-# Paper Reader — Claude Code 论文阅读skill
+# Paper Reader — Claude Code 论文阅读技能
 
 ![](asset/图片.jpg)
 
-一个论文阅读skill，实现四阶段论文阅读工作流：PDF 提取 → 章节翻译 → Obsidian 笔记（翻译+轻分析）→ 深度解读（参考答案）。
-
-（自动写入obsidian偶）
+一个论文阅读技能，实现五阶段论文阅读工作流：PDF 提取 → 章节翻译 → 翻译笔记 → 深度解读 → 自动索引。
 
 ## 设计理念
 
@@ -12,12 +10,13 @@
 
 - `Papers/` 里只有翻译 + 一句话总结 + 创新点——不剧透，你形成独立判断
 - `Reading_List/` 里有完整深度解读——读完翻译后对照验证自己的理解
+- `Reading_List/README.md` 自动维护阅读索引，随时知道读了多少、读了什么
 - 两个目录物理隔离，通过 Obsidian 双向链接互联
 
 ## 环境要求
 
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI
-- [Obsidian](https://obsidian.md/)（用于笔记管理）
+- [Obsidian](https://obsidian.md/)（可选，用于笔记管理与图谱可视化）
 - Python 3.10+，推荐 conda 环境
 
 ```bash
@@ -45,27 +44,27 @@ cp SKILL.md ~/.claude/skills/paper_reader/
 
 ## 在 Obsidian 中设置
 
-1. 复制模板到你的 Obsidian 仓库：
+1. 复制模板到你的 Obsidian Vault：
 
 ```bash
 cp templates/paper_template.md "<你的vault>/Templates/"
 cp templates/paper_deep_read_template.md "<你的vault>/Templates/"
 ```
 
-2. 将 `extract_paper.py` 放入 vault 根目录，或修改 SKILL.md 中的路径指向它。
+2. 将 `extract_paper.py` 和 `update_reading_index.py` 放入 Vault 根目录，或修改 `SKILL.md` 中的脚本路径指向它们。
 
-3. 在 vault 根目录创建 `raw_pdfs/`、`Papers/`、`Reading_List/` 三个文件夹。
+3. 在 Vault 根目录创建 `raw_pdfs/`、`Papers/`、`Reading_List/` 三个文件夹。
 
 ## Obsidian Vault 目录结构
 
-完成安装后，你的 Obsidian vault 应该长这样：
+完成安装后，你的 Obsidian Vault 应该长这样：
 
 ```
-我的论文阅读/                       ← vault 根目录
+我的论文阅读/                       ← Vault 根目录
 ├── Templates/                     ← 模板文件夹
 │   ├── paper_template.md          # Papers/ 笔记模板
 │   └── paper_deep_read_template.md # Reading_List/ 深度解读模板
-├── raw_pdfs/                      ← 原始 PDF（按日期子文件夹管理）
+├── raw_pdfs/                      ← 原始 PDF（推荐按日期子文件夹管理）
 │   └── 2024_01_15/
 │       ├── SomePaper.pdf
 │       └── AnotherPaper.pdf
@@ -73,14 +72,16 @@ cp templates/paper_deep_read_template.md "<你的vault>/Templates/"
 │   ├── CVPR20 · Face X-ray · 翻译+轻分析.md
 │   └── ECCV20 · F3-Net · 翻译+轻分析.md
 ├── Reading_List/                  ← 深度解读（读完对答案）
+│   ├── README.md                  # 自动生成的阅读索引
 │   ├── CVPR20 · Face X-ray · 深度解读.md
 │   └── ECCV20 · F3-Net · 深度解读.md
-├── extract_paper.py               # PDF 提取脚本
+├── extract_paper.py               # PDF 提取 + 元数据脚本
+├── update_reading_index.py        # 阅读索引更新脚本
 └── .obsidian/                     # Obsidian 自动生成
     └── graph.json                 # 图谱配置
 ```
 
-图谱效果：Papers/ 节点和 Reading_List/ 节点通过 `deep_read` ↔ `paper_note` 双向链接互联，可按路径着色区分（翻译蓝色、解读橙色）。
+图谱效果：Papers/ 节点（蓝色）和 Reading_List/ 节点（橙色）通过 `deep_read` ↔ `paper_note` 双向链接互联，一目了然。
 
 ## 使用
 
@@ -95,33 +96,47 @@ cp templates/paper_deep_read_template.md "<你的vault>/Templates/"
 /paper_reader
 ```
 
-## 工作流
+## 辅助命令
+
+```bash
+# 提取 PDF 元数据（DOI、标题、作者、年份）
+python extract_paper.py --meta paper.pdf
+
+# 手动更新阅读索引
+python update_reading_index.py
+```
+
+## 工作流（五阶段）
 
 ```
 PDF → 提取 TXT → 翻译 → Papers/（翻译 + 一句话总结 + 创新点）
                          ↘
                            Reading_List/（详细深度解读，参考答案）
+                                    ↘
+                                      Reading_List/README.md（自动索引）
 ```
 
 | 阶段 | 功能 | 输出 |
 |------|------|------|
-| 1 | PyMuPDF 提取章节文本 | `.txt` 文件 |
+| 1 | PyMuPDF 提取章节文本（含非标准论文兜底） | `.txt` 文件 |
 | 2 | 逐段翻译成中文 | 内存 |
 | 3 | 生成 Papers/ 笔记 | 翻译原文 + 🎯总结 + ✨创新点 |
 | 4 | 生成 Reading_List/ 深度解读 | 📌定位 + 🔑方法 + 👍亮点 + 👎局限 + 💡思考 + 🔗关联 + ❓建议 |
-
-## 领域通用性
-
-不绑定任何特定研究领域。`direction` 和标签从论文内容自动推断，深度解读自动适配论文所属领域。
+| 5 | 更新 Reading_List/README.md | 自动维护的阅读索引表 |
 
 ## 文件说明
 
 | 文件 | 用途 |
 |------|------|
 | `SKILL.md` | 技能定义，Claude Code 加载的核心 |
-| `extract_paper.py` | PDF 章节提取脚本 |
+| `extract_paper.py` | PDF 章节提取（含非标准论文兜底）+ 元数据提取（`--meta`） |
+| `update_reading_index.py` | 扫描 Reading_List/ 自动生成阅读索引 |
 | `templates/paper_template.md` | Papers/ 笔记模板（翻译 + 轻分析） |
 | `templates/paper_deep_read_template.md` | Reading_List/ 深度解读模板 |
+
+## 领域通用性
+
+不绑定任何特定研究领域。`direction` 和标签从论文内容自动推断，深度解读自动适配论文所属领域。已通过 CV、计算生物学等跨领域论文验证。
 
 ## 自定义
 

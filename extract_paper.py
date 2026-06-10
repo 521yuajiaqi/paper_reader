@@ -1,9 +1,12 @@
 #!"F:/Anaconda3/space/envs/paper_reader/python.exe"
 """
-extract_paper.py — 从学术论文 PDF 中提取关键章节文字。
+extract_paper.py — 从学术论文 PDF 中提取关键章节文字和元数据。
 
 用法:
-    python extract_paper.py input.pdf output.txt
+    python extract_paper.py input.pdf [output.txt] [--meta]
+
+    不加 --meta: 输出提取的章节文本
+    加 --meta:   输出 JSON 格式的元数据 {title, doi, authors, year}
 
 依赖:
     pip install pymupdf
@@ -11,6 +14,7 @@ extract_paper.py — 从学术论文 PDF 中提取关键章节文字。
 
 import sys
 import re
+import json
 from collections import Counter
 from pathlib import Path
 
@@ -19,12 +23,9 @@ import fitz  # PyMuPDF
 
 # ── 配置 ──────────────────────────────────────────────────────────────
 
-# 页眉/页脚裁剪区域（占页面高度的比例）
-HEADER_RATIO = 0.12   # 页面顶部 12%
-FOOTER_RATIO = 0.10   # 页面底部 10%
+HEADER_RATIO = 0.12
+FOOTER_RATIO = 0.10
 
-# 目标章节的正则（按在论文中的典型出现顺序排列）
-# 每个章节有一组匹配模式，命中任一即视为该章节标题
 SECTION_PATTERNS = [
     ("abstract", [
         r"^\s*abstract\s*$",
@@ -35,7 +36,6 @@ SECTION_PATTERNS = [
     ("method", [
         r"^\s*(II\.?|III\.?|IV\.?|2[\.\s]|3[\.\s]|4[\.\s])\s*(method|methodology|approach|our\s+approach|proposed\s+method|model\s+architecture|framework)\s*$",
         r"^\s*(method|methodology|approach|our\s+approach|proposed\s+method)\s*$",
-        # 兜底：Introduction 之后、Experiments 之前的编号章节（排除 Related Work / Background 等）
         r"^\s*(III\.?|IV\.?|3[\.\s]|4[\.\s])\s+(?!related\s|background\s|preliminar|problem\s+(statement|formulation)|dataset|experiment|evaluation|result|conclusion|discussion)[A-Z][a-zA-Z\s\-]+$",
     ]),
     ("experiments", [
@@ -48,34 +48,30 @@ SECTION_PATTERNS = [
     ]),
 ]
 
-# 参考文献章节的正则（从这里开始截断）
 REF_PATTERNS = [
     r"^\s*references?\s*$",
     r"^\s*bibliography\s*$",
     r"^\s*R\s*E\s*F\s*E\s*R\s*E\s*N\s*C\s*E\s*S\s*$",
 ]
 
-# 页眉/页脚中常见的噪声行
 NOISE_PATTERNS = [
-    r"^\s*\d+\s*$",                          # 纯页码
-    r"^\s*\d+\s*/\s*\d+\s*$",                # "1 / 12"
-    r"^©\s*\d{4}",                            # 版权声明
-    r"^\s*arXiv:\d{4}\.\d{4,}(v\d+)?\s*$",   # arXiv ID
-    r"^\s*Preprint",                          # Preprint 标记
-    r"^\s*submitted\s+to\s+",                # 投稿标记
+    r"^\s*\d+\s*$",
+    r"^\s*\d+\s*/\s*\d+\s*$",
+    r"^©\s*\d{4}",
+    r"^\s*arXiv:\d{4}\.\d{4,}(v\d+)?\s*$",
+    r"^\s*Preprint",
+    r"^\s*submitted\s+to\s+",
 ]
 
 
 # ── 工具函数 ──────────────────────────────────────────────────────────
 
 def page_y(page, ratio):
-    """返回页面中 ratio 比例处对应的 y 坐标。"""
     _, _, _, height = page.rect
     return height * ratio
 
 
 def is_noise(text):
-    """判断单行文本是否为噪声（页码、版权声明等）。"""
     for pat in NOISE_PATTERNS:
         if re.match(pat, text, re.IGNORECASE):
             return True
@@ -83,45 +79,73 @@ def is_noise(text):
 
 
 def normalise(s):
-    """归一化字符串：去多余空白，小写。"""
     return " ".join(s.split()).lower()
+
+
+# ── 元数据提取 ────────────────────────────────────────────────────────
+
+def extract_metadata(pdf_path: str) -> dict:
+    """从 PDF 提取元数据：标题、DOI、作者、年份、arXiv ID。"""
+    doc = fitz.open(pdf_path)
+    meta = {"title": "", "doi": "", "authors": "", "year": "", "arxiv": ""}
+
+    # 1) PDF 内嵌元数据
+    pdf_meta = doc.metadata
+    if pdf_meta.get("title"):
+        meta["title"] = pdf_meta["title"].strip()
+    if pdf_meta.get("author"):
+        meta["authors"] = pdf_meta["author"].strip()
+
+    # 2) 从前 3 页文本中搜索 DOI 和 arXiv ID
+    full_text = ""
+    for p in range(min(3, len(doc))):
+        full_text += doc[p].get_text("text", sort=True) + "\n"
+
+    # DOI: 10.xxxx/xxxxx...
+    doi_match = re.search(r'\b(10\.\d{4,}/[^\s]+)\b', full_text)
+    if doi_match:
+        meta["doi"] = doi_match.group(1).rstrip(".")
+
+    # arXiv: xxxx.xxxxx
+    arxiv_match = re.search(r'arxiv:(\d{4}\.\d{4,}(?:v\d+)?)', full_text, re.IGNORECASE)
+    if arxiv_match:
+        meta["arxiv"] = arxiv_match.group(1)
+
+    # 年份：从 DOI 或 arXiv 或文本中提取
+    year_match = re.search(r'(?:19|20)(\d{2})', meta.get("arxiv", ""))
+    if year_match:
+        meta["year"] = f"20{year_match.group(1)}"
+    else:
+        year_match = re.search(r'(?:Published|Accepted|Received).*?(20\d{2})', full_text)
+        if year_match:
+            meta["year"] = year_match.group(1)
+
+    doc.close()
+    return meta
 
 
 # ── 核心逻辑 ──────────────────────────────────────────────────────────
 
 def extract_blocks(doc):
-    """
-    从 PDF 中提取所有文本块，返回列表，每个元素为:
-        {
-            "text": str,
-            "page": int (0-based),
-            "y0": float, "y1": float,
-            "font_size": float,
-            "is_bold": bool,
-        }
-    """
     blocks = []
     for page_idx in range(len(doc)):
         page = doc[page_idx]
         header_y = page_y(page, HEADER_RATIO)
         footer_y = page_y(page, 1.0 - FOOTER_RATIO)
 
-        # 使用 dict 模式获取带格式信息的文本
         text_dict = page.get_text("dict", sort=True)
         for block in text_dict.get("blocks", []):
-            if block["type"] != 0:  # 非文本块（图片等）
+            if block["type"] != 0:
                 continue
             for line in block.get("lines", []):
-                bbox = line["bbox"]  # (x0, y0, x1, y1)
+                bbox = line["bbox"]
                 y0, y1 = bbox[1], bbox[3]
 
-                # 拼接该行所有 span 的文本
                 spans = line.get("spans", [])
                 if not spans:
                     continue
                 text = "".join(s["text"] for s in spans)
                 font_size = max(s["size"] for s in spans)
-                # 判断是否加粗/加重：多数 span 的 font 包含 Bold/Medium/Heavy 等
                 bold_keywords = ("bold", "black", "medi", "demi", "heavy", "semi")
                 bold_count = sum(
                     1 for s in spans
@@ -132,11 +156,9 @@ def extract_blocks(doc):
                 blocks.append({
                     "text": text.strip(),
                     "page": page_idx,
-                    "y0": y0,
-                    "y1": y1,
+                    "y0": y0, "y1": y1,
                     "font_size": font_size,
                     "is_bold": is_bold,
-                    # 标记是否在页眉/页脚区域
                     "in_header": y1 < header_y,
                     "in_footer": y0 > footer_y,
                 })
@@ -144,15 +166,6 @@ def extract_blocks(doc):
 
 
 def classify_blocks(blocks):
-    """
-    将文本块分类为:
-      - "header-footer": 页眉/页脚
-      - "section-title": 章节标题
-      - "body": 正文
-      - "reference-start": 参考文献分界线
-    """
-    # ── 第一遍：统计页眉/页脚候选 ──
-    # 收集所有在页眉/页脚区域内的文本行
     header_texts = Counter()
     footer_texts = Counter()
     for b in blocks:
@@ -161,7 +174,6 @@ def classify_blocks(blocks):
         if b["in_footer"] and not is_noise(b["text"]):
             footer_texts[normalise(b["text"])] += 1
 
-    # 重复出现 ≥ 总页数一半的视为固定页眉/页脚
     total_pages = max(b["page"] for b in blocks) + 1 if blocks else 0
     repeat_threshold = max(2, total_pages // 2)
 
@@ -171,28 +183,22 @@ def classify_blocks(blocks):
             or footer_texts.get(text_norm, 0) >= repeat_threshold
         )
 
-    # ── 第二遍：分类每个块 ──
     classified = []
     for b in blocks:
         text = b["text"]
         text_norm = normalise(text)
 
-        # 1) 固定页眉/页脚
         if b["in_header"] or b["in_footer"]:
             if is_noise(text) or is_fixed_header_footer(text_norm):
                 classified.append({**b, "kind": "header-footer"})
                 continue
 
-        # 2) 参考文献分界线
         for pat in REF_PATTERNS:
             if re.match(pat, text, re.IGNORECASE):
                 classified.append({**b, "kind": "reference-start"})
                 break
         else:
-            # 3) 章节标题
             is_section_title = False
-
-            # 先检查文本是否命中章节正则（不包括参考文献）
             matched_section = False
             for _, patterns in SECTION_PATTERNS:
                 for pat in patterns:
@@ -202,7 +208,6 @@ def classify_blocks(blocks):
                 if matched_section:
                     break
 
-            # 检查是否命中参考文献正则
             matched_ref = False
             for pat in REF_PATTERNS:
                 if re.match(pat, text, re.IGNORECASE):
@@ -210,9 +215,7 @@ def classify_blocks(blocks):
                     break
 
             if matched_section or matched_ref:
-                # 字体启发：字号较大或加粗
                 font_ok = b["font_size"] >= 11 or b["is_bold"]
-                # 结构启发：短行、不以句号结尾
                 structural_ok = len(text) < 100 and not text.rstrip().endswith(".")
                 if font_ok or structural_ok:
                     is_section_title = True
@@ -226,14 +229,7 @@ def classify_blocks(blocks):
 
 
 def build_sections(classified_blocks, target_names):
-    """
-    根据 classified_blocks 构建章节映射。
-    返回:
-        sections: {section_name: [text_lines]}
-        references_start: int | None (block index)
-    """
-    # 找到所有章节标题的位置
-    section_positions = []  # (index, matched_section_name)
+    section_positions = []
     references_start = None
 
     for i, b in enumerate(classified_blocks):
@@ -241,8 +237,6 @@ def build_sections(classified_blocks, target_names):
             references_start = i
         if b["kind"] != "section-title":
             continue
-        text = normalise(b["text"])
-        # 检查是否命中目标章节
         for name, patterns in SECTION_PATTERNS:
             for pat in patterns:
                 if re.match(pat, b["text"], re.IGNORECASE):
@@ -251,35 +245,28 @@ def build_sections(classified_blocks, target_names):
             else:
                 continue
             break
-        # 检查是否是参考文献（终止边界）
         for pat in REF_PATTERNS:
             if re.match(pat, b["text"], re.IGNORECASE):
                 if references_start is None:
                     references_start = i
                 break
 
-    # 按目标章节分组文本
     sections = {name: [] for name in target_names}
-    name_to_idx = {name: i for i, name in enumerate(target_names)}
 
     if not section_positions:
         return sections, references_start
 
-    # 对每个命中的章节，确定其文本范围
     for idx, (pos, name) in enumerate(section_positions):
-        start = pos + 1  # 章节标题之后的第一行
-        # 结束位置：下一个章节标题的位置（或参考文献分界线）
+        start = pos + 1
         if idx + 1 < len(section_positions):
             end = section_positions[idx + 1][0]
         else:
             end = references_start if references_start is not None else len(classified_blocks)
 
-        # 收集 start 到 end 之间的 body 文本
         lines = []
         for j in range(start, end):
             b = classified_blocks[j]
-            if b["kind"] in ("body", "section-title"):  # 子标题也算
-                # 过滤掉明显是图表标题的行
+            if b["kind"] in ("body", "section-title"):
                 txt = b["text"]
                 if re.match(r"^\s*(figure|fig\.|table|tab\.)\s*\d+", txt, re.IGNORECASE):
                     continue
@@ -289,23 +276,34 @@ def build_sections(classified_blocks, target_names):
     return sections, references_start
 
 
+def extract_full_text(doc) -> str:
+    """兜底模式：按页提取全部文本，适用于 Nature/Science 等非标准格式论文。"""
+    lines = []
+    for page_idx in range(len(doc)):
+        page = doc[page_idx]
+        text = page.get_text("text", sort=True)
+        # 过滤纯空行和明显噪声
+        for line in text.split("\n"):
+            stripped = line.strip()
+            if not stripped or is_noise(stripped):
+                continue
+            if re.match(r"^\s*(figure|fig\.|table|tab\.)\s*\d+", stripped, re.IGNORECASE):
+                continue
+            lines.append(stripped)
+    return "\n".join(lines)
+
+
 # ── 主入口 ────────────────────────────────────────────────────────────
 
 def extract_paper(pdf_path: str) -> str:
-    """从 PDF 提取章节文本，返回拼接后的字符串。"""
     doc = fitz.open(pdf_path)
 
-    # 1) 提取所有文本块
     blocks = extract_blocks(doc)
-
-    # 2) 分类
     classified = classify_blocks(blocks)
 
-    # 3) 构建章节
     target_names = ["abstract", "introduction", "method", "experiments", "conclusion"]
     sections, _ = build_sections(classified, target_names)
 
-    # 4) 组装输出
     section_labels = {
         "abstract": "Abstract",
         "introduction": "Introduction",
@@ -314,16 +312,30 @@ def extract_paper(pdf_path: str) -> str:
         "conclusion": "Conclusion",
     }
 
+    # 检查是否所有章节都为空 → 兜底模式
+    total_lines = sum(len(sections[name]) for name in target_names)
+    if total_lines == 0:
+        full_text = extract_full_text(doc)
+        doc.close()
+        output = []
+        output.append(f"{'=' * 60}")
+        output.append("  全文 (非标准格式论文，未做章节切分)")
+        output.append(f"{'=' * 60}")
+        output.append("")
+        output.append(full_text)
+        return "\n".join(output)
+
+    # 正常章节输出
     output_parts = []
     for name in target_names:
-        lines = sections.get(name, [])
-        if not lines:
+        lines_data = sections.get(name, [])
+        if not lines_data:
             continue
         output_parts.append(f"{'=' * 60}")
         output_parts.append(f"  {section_labels[name]}")
         output_parts.append(f"{'=' * 60}")
         output_parts.append("")
-        output_parts.extend(lines)
+        output_parts.extend(lines_data)
         output_parts.append("")
 
     doc.close()
@@ -331,22 +343,28 @@ def extract_paper(pdf_path: str) -> str:
 
 
 def main():
-    if len(sys.argv) < 2 or len(sys.argv) > 3:
-        print(f"用法: python {Path(__file__).name} input.pdf [output.txt]")
-        print(f"      output.txt 可选，默认与 PDF 同名放在同目录下")
+    if len(sys.argv) < 2:
+        print(f"用法: python {Path(__file__).name} input.pdf [output.txt] [--meta]")
+        print(f"      --meta  输出 JSON 元数据而非提取文本")
         sys.exit(1)
 
     pdf_path = sys.argv[1]
-    if len(sys.argv) >= 3:
-        out_path = sys.argv[2]
-    else:
-        # 自动生成输出路径：把 .pdf 替换为 .txt
-        p = Path(pdf_path)
-        out_path = str(p.with_suffix(".txt"))
-
     if not Path(pdf_path).exists():
         print(f"[错误] 找不到文件: {pdf_path}")
         sys.exit(1)
+
+    # 元数据模式
+    if "--meta" in sys.argv:
+        meta = extract_metadata(pdf_path)
+        print(json.dumps(meta, ensure_ascii=False, indent=2))
+        return
+
+    # 提取模式
+    if len(sys.argv) >= 3 and not sys.argv[2].startswith("--"):
+        out_path = sys.argv[2]
+    else:
+        p = Path(pdf_path)
+        out_path = str(p.with_suffix(".txt"))
 
     print(f"正在读取: {pdf_path}")
     result = extract_paper(pdf_path)

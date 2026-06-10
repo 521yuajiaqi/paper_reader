@@ -138,6 +138,24 @@ done
 - Reading_List/ 里有完整深度解读——读完翻译后对照验证自己的理解
 - 两个目录物理隔离，双向链接连接。不看 Reading_List 就不会被剧透
 
+### 阶段 5：更新阅读索引
+
+每次生成完一篇论文的深度解读后，运行索引更新脚本：
+
+```bash
+cd "e:/obsidianSpace/论文阅读"
+"F:/Anaconda3/space/envs/paper_reader/python.exe" update_reading_index.py
+```
+
+该脚本扫描 `Reading_List/` 中所有深度解读笔记，提取 frontmatter 信息（标题、会议、年份、方向标签），自动生成 `Reading_List/README.md` 索引表，包含到每篇论文的翻译笔记和深度解读的双向链接。
+
+## 辅助脚本
+
+| 脚本 | 用途 |
+|------|------|
+| `extract_paper.py --meta` | 提取 PDF 元数据（DOI、标题、作者、年份），JSON 格式输出 |
+| `update_reading_index.py` | 扫描已读论文生成索引 |
+
 ## 使用方式
 
 - `/paper_reader <pdf路径>` — 单篇论文
@@ -150,3 +168,4 @@ done
 - 2026-06-03: v2 重构——将"全量分析"改为"翻译 + 轻分析"，面向研0学生优化
 - 2026-06-04: v3 新增阶段4——深度解读存入 Reading_List/，与 Papers/ 物理隔离、双向链接。实现"翻译自己读，解读对答案"的设计理念。同时优化解读模板，新增 📌论文定位 和 🔗与其他论文的关联 两个章节
 - 2026-06-04: 通用化——移除 CV 领域绑定，direction/tag 从论文内容自动推断，🔗关联改为扫描已有笔记动态建立，导师角色改为"该领域资深导师"
+- 2026-06-10: v3.2——三个改进：(1) extract_paper.py 增加非标准论文(如 Nature/Science)兜底模式+PDF元数据提取(--meta)；(2) 新增 update_reading_index.py 自动维护 Reading_List/README.md 阅读索引；(3) 新增阶段5自动更新索引；(4) 文件名统一为 {会议年份}·{简称}·{翻译+轻分析/深度解读}.md
