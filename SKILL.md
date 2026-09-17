@@ -11,8 +11,8 @@ description: "论文阅读工作流：PDF 提取 → 章节翻译 → Papers/ �
 - 提取脚本: `e:/obsidianSpace/论文阅读/extract_paper.py`
 - 笔记模板: `e:/obsidianSpace/论文阅读/Templates/paper_template.md`
 - 深度解读模板: `e:/obsidianSpace/论文阅读/Templates/paper_deep_read_template.md`
-- 论文笔记输出: `e:/obsidianSpace/论文阅读/Papers/`
-- 深度解读输出: `e:/obsidianSpace/论文阅读/Reading_List/`
+- 论文笔记输出: `e:/obsidianSpace/论文阅读/Papers/{direction}/`（按研究方向分文件夹，如 `DeepFakeDetection/`、`FakeNewsDetection/`、`ComputationalBiology/`）
+- 深度解读输出: `e:/obsidianSpace/论文阅读/Reading_List/{direction}/`（同上）
 - 原始 PDF: `e:/obsidianSpace/论文阅读/raw_pdfs/`
 
 ## 触发规则
@@ -55,12 +55,29 @@ for f in "<pdf_dir>"/*.pdf; do
 done
 ```
 
+### 阶段 1.5：碎片重组检查（翻译前必做）
+
+学术论文多为**两栏排版**，`extract_paper.py` 提取的 `.txt` 按栏序而非阅读序输出，常产生两类问题：
+
+- **跨栏断裂**：一段完整文字被拆成两半、散落在不同位置（前半段在左栏末尾、后半段在右栏开头）
+- **图表标题/页眉脚注插花**：Figure/Table 的 caption、页眉页脚（如 arXiv ID、页码）插在正文段落中间
+
+因此，**翻译前必须先通读一遍 `.txt`，把碎片按逻辑重组**，而不是顺着物理顺序直接翻：
+
+1. 找出句子中途断裂处（语法不完整、缺主语/谓语、句末无标点）
+2. 把被拆散的段落按语义拼回原位
+3. 识别并跳过 caption、页眉页脚
+4. 重组后再翻译，确保**原文每一段内容都落进译文**，不因碎片化而漏段
+
+翻译完成后，回头对照原文段落数，确认没有整段丢失。**常见漏段信号**：译文某段直接跳到下一主题，缺少原文里明显的过渡句或结论句。
+
 ### 阶段 2：章节翻译
 
 读取阶段 1 产生的 `.txt` 文件，将每个章节**逐段忠实翻译成中文**。
 
 翻译原则：
 - **完整 + 准确并重**：逐段翻译，原文写了几段就翻几段，每段信息量对等。技术术语不自由发挥，人名、方法名、指标名保留原文或括号标注。拆分英文长句为中文短句，信息只增不减——必要时加括号补充原文隐含的背景
+- **先重组再翻译**：两栏 PDF 提取的 txt 常碎片化（跨栏断裂、图表标题插花），翻译前先按阶段 1.5 重组，避免顺着物理顺序漏掉跨栏段落
 - **表格跳过**：表格数据不逐行翻译，标注 `[表格：xxx 主要内容]` 并简要说明表格发现了什么
 - **公式跳过**：公式不翻译，标注 `[公式：变量含义]`
 - **图表标注跳过**：Figure/Table 的标题和引用不逐字翻，但其结论性描述保留
@@ -74,7 +91,7 @@ done
 
 ### 阶段 3：生成 Obsidian 笔记
 
-将翻译结果和轻分析填入模板 `e:/obsidianSpace/论文阅读/Templates/paper_template.md`，生成笔记到 `e:/obsidianSpace/论文阅读/Papers/`。
+将翻译结果和轻分析填入模板 `e:/obsidianSpace/论文阅读/Templates/paper_template.md`，生成笔记到 `e:/obsidianSpace/论文阅读/Papers/{direction}/`（direction 子文件夹，与 frontmatter 的 direction 字段一致，不存在则创建）。
 
 **文件名**：`{会议}{年份} · {简称} · 翻译+轻分析.md`（与图谱别名相同的命名规则）
 
@@ -109,7 +126,7 @@ done
 
 ### 阶段 4：生成深度解读
 
-将阶段 2 的翻译和阶段 3 的轻分析作为基础，以**该领域资深导师**的角色写一份详细解读，存入 `e:/obsidianSpace/论文阅读/Reading_List/`。角色立场：熟悉该论文所属领域的现状、发展脉络和代表性工作，但不局限于特定子领域。
+将阶段 2 的翻译和阶段 3 的轻分析作为基础，以**该领域资深导师**的角色写一份详细解读，存入 `e:/obsidianSpace/论文阅读/Reading_List/{direction}/`（与 Papers/ 同名的 direction 子文件夹）。角色立场：熟悉该论文所属领域的现状、发展脉络和代表性工作，但不局限于特定子领域。
 
 **文件名**：`{会议}{年份} · {简称} · 深度解读.md`（与图谱别名相同的命名规则，后缀为 深度解读）
 
@@ -146,7 +163,7 @@ cd "e:/obsidianSpace/论文阅读"
 "F:/Anaconda3/space/envs/paper_reader/python.exe" update_reading_index.py
 ```
 
-该脚本扫描 `Reading_List/` 中所有深度解读笔记，提取 frontmatter 信息（标题、会议、年份、方向标签），自动生成 `Reading_List/README.md` 索引表，包含到每篇论文的翻译笔记和深度解读的双向链接。
+该脚本递归扫描 `Reading_List/` 各 direction 子文件夹中的所有深度解读笔记，提取 frontmatter 信息（标题、会议、年份、方向标签），自动生成 `Reading_List/README.md` 索引表，包含到每篇论文的翻译笔记和深度解读的双向链接。
 
 ## 辅助脚本
 
@@ -168,3 +185,5 @@ cd "e:/obsidianSpace/论文阅读"
 - 2026-06-04: v3 新增阶段4——深度解读存入 Reading_List/，与 Papers/ 物理隔离、双向链接。实现"翻译自己读，解读对答案"的设计理念。同时优化解读模板，新增 📌论文定位 和 🔗与其他论文的关联 两个章节
 - 2026-06-04: 通用化——移除 CV 领域绑定，direction/tag 从论文内容自动推断，🔗关联改为扫描已有笔记动态建立，导师角色改为"该领域资深导师"
 - 2026-06-10: v3.2——三个改进：(1) extract_paper.py 增加非标准论文(如 Nature/Science)兜底模式+PDF元数据提取(--meta)；(2) 新增 update_reading_index.py 自动维护 Reading_List/README.md 阅读索引；(3) 新增阶段5自动更新索引；(4) 文件名统一为 {会议年份}·{简称}·{翻译+轻分析/深度解读}.md
+- 2026-09-09: v3.3——新增阶段 1.5「碎片重组检查」+ 翻译原则「先重组再翻译」，解决两栏 PDF 提取碎片化导致的漏段/错段问题（MesoNet 笔记曾漏掉 Deepfake 进阶变体段落、误读 Xception 对比结论）
+- 2026-09-09: v3.4——Papers/ 和 Reading_List/ 按研究方向（direction）再分一层子文件夹（如 DeepFakeDetection/、FakeNewsDetection/、ComputationalBiology/），update_reading_index.py 改为递归扫描

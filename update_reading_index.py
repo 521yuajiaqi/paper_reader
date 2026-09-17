@@ -47,7 +47,7 @@ def parse_frontmatter(filepath: Path) -> dict:
 
 def build_index():
     """扫描 Reading_List/，生成索引。"""
-    deep_reads = sorted(READING_LIST_DIR.glob("*.md"))
+    deep_reads = sorted(READING_LIST_DIR.rglob("*.md"))
     # 排除索引文件自身
     deep_reads = [f for f in deep_reads if f.name != "README.md"]
 
@@ -78,8 +78,8 @@ def build_index():
         paper_link = re.search(r"\[\[(.+?)\]\]", paper_note)
         if paper_link:
             paper_name = paper_link.group(1)
-            paper_path = PAPERS_DIR / f"{paper_name}.md"
-            if paper_path.exists():
+            paper_exists = any(PAPERS_DIR.rglob(f"{paper_name}.md"))
+            if paper_exists:
                 lines.append(
                     f"| {i} | [[{dr_path.stem}\\|{title}]] | {venue} | {year} "
                     f"| #{dir_tag} | [[{paper_name}]] |"
