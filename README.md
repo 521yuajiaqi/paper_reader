@@ -27,6 +27,16 @@ pip install pymupdf
 
 ## 安装
 
+### 推荐方法：交给 AI 助手一键安装
+
+最快的方式——把仓库地址发给你的 AI 助手（Claude Code、Codex、Cursor 等），它会自动克隆并完成全部安装配置：
+
+> 帮我安装这个论文阅读技能：https://github.com/521yuajiaqi/paper_reader
+
+AI 助手会自动完成下方「手动安装」的全部步骤（克隆仓库 → 复制 SKILL.md 到 skills 目录 → 建 junction → 配置 Python 环境 → 放置脚本与模板）。你只需要在对话里确认目录路径即可。
+
+### 手动安装
+
 ```bash
 # 1. 克隆仓库
 git clone https://github.com/<your-username>/paper_reader.git
